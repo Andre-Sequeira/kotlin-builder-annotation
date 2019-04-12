@@ -6,7 +6,7 @@ package com.thinkinglogic.builder.annotation
  */
 @Retention(AnnotationRetention.SOURCE)
 @Target(AnnotationTarget.CLASS, AnnotationTarget.CONSTRUCTOR)
-annotation class Builder
+annotation class Builder(val implementBuilderInterface: Boolean = false)
 
 /**
  * Use this annotation to mark a collection or array as being allowed to contain null values,

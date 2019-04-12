@@ -2,10 +2,7 @@ package com.thinkinglogic.builder.processor
 
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.thinkinglogic.builder.annotation.Builder
-import com.thinkinglogic.builder.annotation.DefaultValue
-import com.thinkinglogic.builder.annotation.Mutable
-import com.thinkinglogic.builder.annotation.NullableType
+import com.thinkinglogic.builder.annotation.*
 import org.jetbrains.annotations.NotNull
 import java.io.File
 import java.util.*
@@ -20,6 +17,7 @@ import javax.lang.model.type.TypeMirror
 import javax.lang.model.util.ElementFilter.*
 import javax.tools.Diagnostic.Kind.ERROR
 import javax.tools.Diagnostic.Kind.NOTE
+import kotlin.reflect.full.functions
 
 /**
  * Kapt processor for the @Builder annotation.
@@ -76,18 +74,21 @@ class BuilderProcessor : AbstractProcessor() {
 
     /** Invokes [writeBuilder] to create a builder for the given [constructor]. */
     private fun writeBuilderForConstructor(constructor: ExecutableElement, sourceRootFile: File) {
-        writeBuilder(constructor.enclosingElement as TypeElement, constructor.parameters, sourceRootFile)
+        writeBuilder(constructor.enclosingElement as TypeElement, constructor.parameters, sourceRootFile, constructor)
     }
 
     /** Writes the source code to create a builder for [classToBuild] within the [sourceRoot] directory. */
-    private fun writeBuilder(classToBuild: TypeElement, fields: List<VariableElement>, sourceRoot: File) {
+    private fun writeBuilder(classToBuild: TypeElement, fields: List<VariableElement>, sourceRoot: File, annotatedElement: Element = classToBuild) {
         val packageName = processingEnv.elementUtils.getPackageOf(classToBuild).toString()
         val builderClassName = "${classToBuild.simpleName}Builder"
+
+        val annotation = annotatedElement.getAnnotation(Builder::class.java)
 
         processingEnv.noteMessage { "Writing $packageName.$builderClassName" }
 
         val builderSpec = TypeSpec.classBuilder(builderClassName)
         val builderClass = ClassName(packageName, builderClassName)
+
 
         fields.forEach { field ->
             processingEnv.noteMessage { "Adding field: $field" }
@@ -95,9 +96,15 @@ class BuilderProcessor : AbstractProcessor() {
             builderSpec.addFunction(field.asSetterFunctionReturning(builderClass))
         }
 
+        if (annotation.implementBuilderInterface) {
+            builderSpec.addSuperinterface(
+                    BuilderInterface::class.asTypeName()
+                            .parameterizedBy(classToBuild.asKotlinTypeName())
+            )
+        }
         builderSpec.primaryConstructor(FunSpec.constructorBuilder().build())
         builderSpec.addFunction(createConstructor(fields, classToBuild))
-        builderSpec.addFunction(createBuildFunction(fields, classToBuild))
+        builderSpec.addFunction(createBuildFunction(fields, classToBuild, annotation.implementBuilderInterface))
         builderSpec.addFunction(createCheckRequiredFieldsFunction(fields))
 
         FileSpec.builder(packageName, builderClassName)
@@ -147,7 +154,7 @@ class BuilderProcessor : AbstractProcessor() {
     }
 
     /** Creates a 'build()' function that will invoke a constructor for [returnType], passing [fields] as arguments and returning the new instance. */
-    private fun createBuildFunction(fields: List<Element>, returnType: TypeElement): FunSpec {
+    private fun createBuildFunction(fields: List<Element>, returnType: TypeElement, override: Boolean): FunSpec {
         val code = StringBuilder("$CHECK_REQUIRED_FIELDS_FUNCTION_NAME()")
         code.appendln().append("return ${returnType.simpleName}(")
         val iterator = fields.listIterator()
@@ -166,6 +173,11 @@ class BuilderProcessor : AbstractProcessor() {
         return FunSpec.builder("build")
                 .returns(returnType.asClassName())
                 .addCode(code.toString())
+                .apply {
+                    if (override) {
+                        addModifiers(KModifier.OVERRIDE)
+                    }
+                }
                 .build()
     }
 
