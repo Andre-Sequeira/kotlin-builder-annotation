@@ -17,7 +17,6 @@ import javax.lang.model.type.TypeMirror
 import javax.lang.model.util.ElementFilter.*
 import javax.tools.Diagnostic.Kind.ERROR
 import javax.tools.Diagnostic.Kind.NOTE
-import kotlin.reflect.full.functions
 
 /**
  * Kapt processor for the @Builder annotation.
@@ -197,8 +196,9 @@ class BuilderProcessor : AbstractProcessor() {
 
     /** Creates a property for the field identified by this element. */
     private fun Element.asProperty(): PropertySpec =
-            PropertySpec.varBuilder(simpleName.toString(), asKotlinTypeName().asNullable(), KModifier.PRIVATE)
+            PropertySpec.builder(simpleName.toString(), asKotlinTypeName().copy(nullable = true), KModifier.PRIVATE)
                     .initializer(defaultValue())
+                    .mutable(true)
                     .build()
 
     /** Returns the correct default value for this element - the value of any [DefaultValue] annotation, or "null". */
@@ -220,14 +220,19 @@ class BuilderProcessor : AbstractProcessor() {
     private fun Element.asSetterFunctionReturning(builder: ClassName): FunSpec {
         val fieldType = asKotlinTypeName()
         val parameterClass = if (isNullable()) {
-            fieldType.asNullable()
+            fieldType.copy(nullable = true)
         } else {
             fieldType
         }
+
+        val codeBlock = CodeBlock.Builder()
+                .add("return apply·{·%L·=·value·}\n", simpleName)
+                .build()
+
         return FunSpec.builder(simpleName.toString())
                 .addParameter(ParameterSpec.builder("value", parameterClass).build())
                 .returns(builder)
-                .addCode("return apply { $simpleName = value }\n")
+                .addCode(codeBlock)
                 .build()
     }
 
@@ -257,7 +262,7 @@ class BuilderProcessor : AbstractProcessor() {
      * @throws NoSuchElementException if [this.typeArguments] is empty.
      */
     private fun ParameterizedTypeName.withNullableType(): ParameterizedTypeName {
-        val lastType = this.typeArguments.last().asNullable()
+        val lastType = this.typeArguments.last().copy(nullable = true)
         val typeArguments = ArrayList<TypeName>()
         typeArguments.addAll(this.typeArguments.dropLast(1))
         typeArguments.add(lastType)
@@ -273,9 +278,9 @@ class BuilderProcessor : AbstractProcessor() {
     private fun ParameterizedTypeName.asMutableCollection(): ParameterizedTypeName {
         val mutable = MUTABLE_COLLECTIONS[rawType]!!
                 .parameterizedBy(*this.typeArguments.toTypedArray())
-                .annotated(this.annotations)
-        return if (nullable) {
-            mutable.asNullable()
+                .copy(annotations = this.annotations)
+        return if (isNullable) {
+            mutable.copy(nullable = true)
         } else {
             mutable
         }
