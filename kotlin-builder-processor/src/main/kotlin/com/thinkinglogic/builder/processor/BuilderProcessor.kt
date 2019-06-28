@@ -155,7 +155,7 @@ class BuilderProcessor : AbstractProcessor() {
     /** Creates a 'build()' function that will invoke a constructor for [returnType], passing [fields] as arguments and returning the new instance. */
     private fun createBuildFunction(fields: List<Element>, returnType: TypeElement, override: Boolean): FunSpec {
         val code = StringBuilder("$CHECK_REQUIRED_FIELDS_FUNCTION_NAME()")
-        code.appendln().append("return ${returnType.simpleName}(")
+        code.appendln().append("return ${returnType.asClassName()}(")
         val iterator = fields.listIterator()
         while (iterator.hasNext()) {
             val field = iterator.next()
