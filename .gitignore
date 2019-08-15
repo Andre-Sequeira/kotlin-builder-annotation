@@ -4,3 +4,4 @@
 
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar
+out/test/classes/generated_tests/
